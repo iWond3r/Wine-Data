@@ -1,0 +1,914 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Import project
+```{r}
+wineData <- read.table("c:/Users/Matt Sheu/Desktop/UCLA ML/Wine Final Project/winequality-red.csv", header=TRUE, sep=",")
+
+wineDataCat <- read.table("c:/Users/Matt Sheu/Desktop/UCLA ML/Wine Final Project/winequality-red.csv", header=TRUE, sep=",")
+```
+
+Set my environment
+```{r}
+library(tidyverse)
+```
+what does the data look like?
+
+
+```{r}
+head(wineData)
+```
+
+
+
+#####################################################################################
+
+Data Preperation
+
+Are there any null values?
+
+
+```{r}
+sum(is.na(wineData$fixed.acidity))
+sum(is.na(wineData$volatile.acidity))
+sum(is.na(wineData$citric.acid))
+sum(is.na(wineData$residual.sugar))
+sum(is.na(wineData$chlorides))
+sum(is.na(wineData$free.sulfur.dioxide))
+sum(is.na(wineData$total.sulfur.dioxide))
+sum(is.na(wineData$density))
+sum(is.na(wineData$pH))
+sum(is.na(wineData$sulphates))
+sum(is.na(wineData$alcohol))
+sum(is.na(wineData$quality))
+```
+Great! no nulls in any of my columns.
+
+
+#####################################################################################
+EDA
+
+count how many wines fall into which rankings. 
+  - interesting to see that there is no 0, 1 or 2's as well as 9 and 10
+  - This could be more usefull as a categorical variable
+
+```{r}
+wineData %>% count(quality)
+```
+
+
+Histogram of the quality count above. 
+```{r}
+ggplot(data = wineData) + 
+  geom_bar(mapping = aes(x = quality))
+```
+- data is pretty scarce on the edges 3,4 and 8
+  - can create a category bunching things up. 
+
+
+Checking the correlation coefficient. the number outputed is the pearson r, which measures the linear dependence between two variables. 
+```{r}
+#install.packages("PerformanceAnalytics")
+library(PerformanceAnalytics)
+chart.Correlation(wineData, histogram = TRUE, pch=30) 
+
+```
+
+```{r}
+#install.packages("corrplot")
+library(corrplot)
+par(mfrow = c(1,1))
+cor.red <- cor(wineData)
+corrplot.mixed(cor.red, upper = "circle", lower = "number", number.cex = .7, lower.col = "black")
+```
+I don't know why the plot shows up in the plot window and not in this notebook. 
+
+
+Check for Linearity in respect to quality. 
+```{r}
+ggplot(mapping = aes(x = fixed.acidity, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess")
+ggplot(mapping = aes(x = volatile.acidity, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess")
+ggplot(mapping = aes(x = citric.acid, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess")
+ggplot(mapping = aes(x = residual.sugar, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess")
+ggplot(mapping = aes(x = chlorides, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess")
+ggplot(mapping = aes(x = total.sulfur.dioxide, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess")
+ggplot(mapping = aes(x = free.sulfur.dioxide, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess")
+ggplot(mapping = aes(x = density, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess")
+ggplot(mapping = aes(x = pH, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess")
+ggplot(mapping = aes(x = sulphates, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess")
+ggplot(mapping = aes(x = alcohol, y = quality), data = wineData) + 
+  geom_point() +
+	geom_smooth(method = "loess") # do a bunch of little regressions on small parts of x 
+```
+
+From the last two graph, we can see that
+  - free.sulphur.dioxide and total.sulfur.dioxide have extremely strong correlation 0.67
+    - so we won't want to use both variables in our model due to colinearity. 
+  - density and pH have a correlations with fixed.acitdity so also have to choose which ones to keep or use in the model. 
+  -   alcohol - 0.48, volatile.acidity - -0.39, citric.acid - 0.23, and sulphates - 0.25 are the 4 strongest correlations to quality. 
+
+
+
+
+
+
+
+What does the distrobution Look like
+  - i don't know what to do with the distribution information. 
+```{r}
+ggplot(data = wineData) + 
+  geom_histogram(mapping = aes(x = fixed.acidity))
+ggplot(data = wineData) + 
+  geom_histogram(mapping = aes(x = volatile.acidity))
+ggplot(data = wineData) + 
+  geom_histogram(mapping = aes(x = citric.acid)) 
+ggplot(data = wineData) + 
+  geom_histogram(mapping = aes(x = residual.sugar))
+ggplot(data = wineData) + 
+  geom_histogram(mapping = aes(x = chlorides))
+ggplot(data = wineData) + 
+  geom_histogram(mapping = aes(x = free.sulfur.dioxide))
+ggplot(data = wineData) + 
+  geom_histogram(mapping = aes(x = density))
+ggplot(data = wineData) + 
+  geom_histogram(mapping = aes(x = pH))
+ggplot(data = wineData) + 
+  geom_histogram(mapping = aes(x = sulphates))
+ggplot(data = wineData) + 
+  geom_histogram(mapping = aes(x = alcohol))
+```
+
+#####################################################################################
+prep data - adding categorical columns to assist with classification. 
+  - will be adding to wineDataCat to keep the adjustments separate. 
+```{r}
+wineDataCat$quality_Cat <- ifelse((wineData$quality == 3 | wineData$quality == 4), "Bad", 
+                        ifelse((wineData$quality == 5 | wineData$quality == 6), "Good", "Great"))
+```
+
+checking if the new bucket was created
+```{r}
+wineDataCat %>% count(quality_Cat)
+```
+
+create a column for order the levels of factors. used for ordered logistic regression later. 
+```{r}
+wineDataCat$quality_Catnum <- factor(wineData$quality, levels=c("3", "4", "5", "6", "7", "8"), ordered=TRUE)
+```
+
+
+
+#####################################################################################
+
+Split training and test set to use for the modeling techniques. 
+
+For Linear Regression
+```{r}
+set.seed(1)
+trainingRows <- sample(1:nrow(wineData), 0.8 * nrow(wineData)) 
+trainingData <- wineData[trainingRows, ]
+testData <- wineData[-trainingRows, ]
+```
+
+For Logistic Regression
+```{r}
+trainingRowsCat <- sample(1:nrow(wineDataCat), 0.8 * nrow(wineDataCat)) 
+trainingDataCat <- wineDataCat[trainingRowsCat, ]
+testDataCat <- wineDataCat[-trainingRowsCat, ]
+```
+
+#####################################################################################
+
+Feature engineering
+
+Figure out which features are best to use. 
+
+best subset selection
+
+```{r}
+library(leaps)
+```
+
+#training data
+```{r}
+regfit.train = regsubsets(quality ~ . , data = trainingData, nvmax = 11)
+summary(regfit.train)
+```
+
+
+
+# full dataset 
+  # test on test data set to show the difference
+  
+```{r}
+regfit.full = regsubsets(quality ~ . , data = wineData, nvmax = 11)
+summary(regfit.full)
+```
+
+```{r}
+regfit.fwd = regsubsets(quality ~., data = wineData, nvmax = 11, method = "forward")
+regfit.bwd = regsubsets(quality ~., data = wineData, nvmax = 11, method = "backward")
+```
+
+```{r}
+summary(regfit.fwd)
+```
+
+
+```{r}
+summary(regfit.bwd)
+```
+
+
+Conclusion: test vs full vs regular vs backward vs forward is the same. 
+
+
+```{r}
+reg.summary = summary(regfit.full)
+```
+
+```{r}
+reg.summary$adjr2
+```
+
+```{r}
+which.max (reg.summary$adjr2)
+```
+
+```{r}
+plot(reg.summary$adjr2 ,xlab =" Number of Variables ", ylab=" Adjusted RSq",type="l")
+points (8, reg.summary$adjr2[8], col ="red",cex =2, pch =20)
+```
+
+# now lets see which one does better by using K fold cross validation
+
+```{r}
+k = 10
+set.seed(1)
+folds = sample(1:k, nrow(wineData), replace = TRUE)
+cv.errors = matrix(NA, k, 11, dimnames = list(NULL, paste(1:11)))
+```
+
+
+
+```{r}
+predict.regsubsets = function (object ,newdata ,id ,...){
+ form=as.formula (object$call [[2]])
+ mat=model.matrix (form ,newdata )
+ coefi =coef(object ,id=id)
+ xvars =names (coefi )
+ mat[,xvars]%*% coefi
+ }
+```
+
+
+
+```{r}
+for(j in 1:k){
+ best.fit = regsubsets(quality ~., data=wineData[folds != j,],
+nvmax =11)
+ for(i in 1:11) {
+ pred = predict(best.fit, wineData[folds ==j,], id=i)
+ cv.errors[j,i] = mean( (wineData$quality[folds == j] - pred)^2)
+ }
+ }
+```
+
+
+```{r}
+mean.cv.errors = apply(cv.errors, 2, mean)
+mean.cv.errors
+```
+
+
+
+Conclusion: use top 8 features to model prediction through best subset selection
+  1. alcohol
+  2. volatile.acidity
+  3. sulphates
+  4. total.sulfur.dioxide
+  5. chlorides
+  6. ph
+  7. free.sulver.dioxide
+  8. citric.acid
+
+
+
+#####################################################################################
+
+
+Linear regression
+
+1st model - Linear regression
+  http://www.sthda.com/english/articles/39-regression-model-diagnostics/161-linear-regression-assumptions-and-diagnostics-in-r-essentials/
+  
+```{r}
+library(broom)
+```
+
+
+```{r}
+lm.alcfit = lm(quality ~ alcohol , data = trainingData)
+summary(lm.alcfit)
+```
+
+
+```{r}
+lm.allfit = lm(quality ~. , data = trainingData)
+summary(lm.allfit)
+```
+
+```{r}
+car::vif(lm.allfit)
+```
+This indicates that fixed.acidity and density may be problematic. 
+
+
+** Pr(>|t|) tells me if the null hypothesis is probably true.  use example for fixed.acidity. in this case, if the p value is high, you believe it. if it is not then you dont' believe it. the null hypothesis is = 0. if the coefficient is 0 or close to 0, you believe it.  **
+
+Multicollinearity 
+  - where two or more predictor variables might be correlated with each other. This means that there is redundancy between predictors. 
+  - multicollinearity can be assessed by computing a score called the variance inflation factor (VIF), which measures how much the variance of a regression coefficient is inflated due to multicollinearity in the model
+    - a VIF score that exceeds 5 or 10 indicates a problematic amount of collinearity
+
+```{r}
+lm.selffit = lm(quality ~ alcohol + volatile.acidity + citric.acid + sulphates, data = trainingData)
+summary(lm.selffit)
+```
+
+```{r}
+car::vif(lm.selffit)
+```
+
+Using all the p value significant variables that we learned from lm.allfit
+  - removed residual.sugar
+```{r}
+lm.starfit = lm(quality ~ volatile.acidity + total.sulfur.dioxide + pH + sulphates + alcohol , data = trainingData)
+summary(lm.starfit)
+```
+
+```{r}
+car::vif(lm.starfit)
+```
+
+```{r}
+glance(lm.alcfit)
+```
+
+```{r}
+glance(lm.allfit)
+```
+
+```{r}
+glance(lm.starfit)
+```
+
+```{r}
+glance(lm.selffit)
+```
+
+
+```{r}
+linear_quality_alc.res = resid(lm.alcfit)
+linear_quality_all.res = resid(lm.allfit)
+linear_quality_self.res = resid(lm.selffit)
+linear_quality_star.res = resid(lm.starfit)
+```
+
+```{r}
+plot(trainingData$alcohol, linear_quality_alc.res )
+points(trainingData$alcohol, linear_quality_all.res, col = "red")
+```
+
+```{r}
+plot(trainingData$alcohol, linear_quality_alc.res )
+points(trainingData$alcohol, linear_quality_self.res, col = "blue")
+```
+
+```{r}
+plot(trainingData$alcohol, linear_quality_alc.res )
+points(trainingData$alcohol, linear_quality_star.res, col = "green")
+```
+
+
+
+
+**need to graph the residuals and show where my prediction is**
+
+
+When performing Linear regression, we make several assumptions about the data, such as :
+
+Linearity of the data. The relationship between the predictor (x) and the outcome (y) is assumed to be linear.
+Normality of residuals. The residual errors are assumed to be normally distributed.
+Homogeneity of residuals variance. The residuals are assumed to have a constant variance (homoscedasticity)
+Independence of residuals error terms.
+
+
+-- Diagnostic Plots
+
+```{r}
+par(mfrow = c(2,2))
+plot(lm.starfit)
+```
+
+The diagnostic plots show residuals in four different ways:
+
+Residuals vs Fitted. Used to check the linear relationship assumptions. A horizontal line, without distinct patterns is an indication for a linear relationship, what is good.
+
+```{r}
+plot(lm.starfit, 1)
+```
+
+Ideally, the residual plot will show no fitted patern. However, you can see in this plot that a pattern is present which indicates a problem with some aspect of the linear model. 
+  ** I need to describe what this is**
+  ** if there was no pattern, we can assume linear relationship between the predictors and the outcome variables**
+
+
+Normal Q-Q. Used to examine whether the residuals are normally distributed. It's good if residuals points follow the straight dashed line.
+  In our graph, all the points fall approximately along this reference line, so we can assume normality
+```{r}
+plot(lm.starfit, 2)
+```
+
+
+
+
+
+
+Scale-Location (or Spread-Location). Used to check the homogeneity of variance of the residuals (homoscedasticity). Horizontal line with equally spread points is a good indication of homoscedasticity. This is not the case in our example, where we have a heteroscedasticity problem.
+  heteroscedasticity refers to the circumstance in which the variability of a variable is unequal across the range of values of a second variable that predicts it.
+  
+```{r}
+plot(lm.starfit, 3)
+```
+
+
+Residuals vs Leverage. Used to identify influential cases, that is extreme values that might influence the regression results when included or excluded from the analysis. This plot will be described further in the next sections.
+  - Observations whose standardized residuals are greater than 3 in absolute value are possible outliers 
+  - when data points have high Cook's distance scores and are to the upper or lower right of the leverage plot, they have leverage meaning they are influential to the regression results. 
+    - the regression results will be altered if we exclude those cases
+      - there are no influential points shown on the residuals vs leverage plot because all points are well inside the Cook's distance lines.  
+
+```{r}
+#Cook's Distance
+plot(lm.starfit, 4)
+# Residuals vs Leverage
+plot(lm.starfit, 5)
+```
+
+Conclusion: This Linear regression has failed 2 of 4 tests. We should lookinto doing a different model. 
+  - trying to predict a number at the end is probably a bad idea. let's treat the wine qualities as categories. 
+
+
+
+
+#####################################################################################
+Classification
+Ordinal Logistic regression
+
+
+```{r}
+library(MASS)
+```
+
+```{r}
+head(trainingDataCat)
+```
+
+
+```{r}
+fit.odr_log_alc <- polr(quality_Catnum ~ alcohol, data=trainingDataCat, Hess = TRUE)
+summary(fit.odr_log_alc)
+```
+
+
+add p- value to check for significance. 
+```{r}
+summary_table_alc <- coef(summary(fit.odr_log_alc))
+pval <- pnorm(abs(summary_table_alc[, "t value"]),lower.tail = FALSE)* 2
+summary_table_alc <- cbind(summary_table_alc, "p value" = round(pval,3))
+summary_table_alc
+```
+
+
+```{r}
+predictedClassAlc <- predict(fit.odr_log_alc, testDataCat)  # predict the classes directly
+head(predictedClassAlc)
+```
+
+```{r}
+predictedScoresAlc <- predict(fit.odr_log_alc, testDataCat, type="p")  # predict the probabilites
+head(predictedScoresAlc)
+```
+
+
+
+confusion matrix
+```{r}
+table(testDataCat$quality_Catnum, predictedClassAlc)
+```
+
+
+# misclassification error
+```{r}
+mean(as.character(testDataCat$quality_Catnum) != as.character(predictedClassAlc))
+```
+
+
+
+
+##########################################################################
+
+
+
+```{r}
+fit.odr_log_self <- polr(quality_Catnum ~ alcohol + volatile.acidity + citric.acid + sulphates, data=trainingDataCat, Hess = TRUE)
+summary(fit.odr_log_self)
+```
+
+
+add p- value to check for significance. 
+```{r}
+summary_table_self <- coef(summary(fit.odr_log_self))
+pval <- pnorm(abs(summary_table_self[, "t value"]),lower.tail = FALSE)* 2
+summary_table_self <- cbind(summary_table_self, "p value" = round(pval,3))
+summary_table_self
+```
+
+
+```{r}
+predictedClass_self <- predict(fit.odr_log_self, testDataCat)  # predict the classes directly
+head(predictedClass_self)
+```
+
+```{r}
+predictedScores_self <- predict(fit.odr_log_self, testDataCat, type="p")  # predict the probabilites
+head(predictedScores_self)
+```
+
+
+
+confusion matrix
+```{r}
+table(testDataCat$quality_Catnum, predictedClass_self)
+```
+
+
+# misclassification error
+```{r}
+mean(as.character(testDataCat$quality_Catnum) != as.character(predictedClass_self))
+```
+
+
+##########################################################################
+
+
+
+```{r}
+fit.odr_log_star <- polr(quality_Catnum ~ volatile.acidity + total.sulfur.dioxide + pH + sulphates + alcohol, data=trainingDataCat, Hess = TRUE)
+summary(fit.odr_log_star)
+```
+
+
+add p- value to check for significance. 
+```{r}
+summary_table_star <- coef(summary(fit.odr_log_star))
+pval <- pnorm(abs(summary_table_star[, "t value"]),lower.tail = FALSE)* 2
+summary_table_star <- cbind(summary_table_star, "p value" = round(pval,3))
+summary_table_star
+```
+
+
+```{r}
+predictedClass_star <- predict(fit.odr_log_star, testDataCat)  # predict the classes directly
+head(predictedClass_star)
+```
+
+```{r}
+predictedScores_star <- predict(fit.odr_log_star, testDataCat, type="p")  # predict the probabilites
+head(predictedScores_star)
+```
+
+
+
+confusion matrix
+```{r}
+table(testDataCat$quality_Catnum, predictedClass_star)
+```
+
+
+# misclassification error
+```{r}
+mean(as.character(testDataCat$quality_Catnum) != as.character(predictedClass_star))
+```
+
+
+
+
+##########################################################################
+
+
+```{r}
+fit.odr_log_all <- polr(quality_Catnum ~ . -quality -quality_Cat , data=trainingDataCat, Hess = TRUE)
+summary(fit.odr_log_all)
+```
+
+
+add p- value to check for significance. 
+```{r}
+summary_table_all <- coef(summary(fit.odr_log_all))
+pval <- pnorm(abs(summary_table_all[, "t value"]),lower.tail = FALSE)* 2
+summary_table_all <- cbind(summary_table_all, "p value" = round(pval,3))
+summary_table_all
+```
+
+
+```{r}
+predictedClass_all <- predict(fit.odr_log_all, testDataCat)  # predict the classes directly
+head(predictedClass_all)
+```
+
+```{r}
+predictedScores_all <- predict(fit.odr_log_all, testDataCat, type="p")  # predict the probabilites
+head(predictedScores_all)
+```
+
+
+
+confusion matrix
+```{r}
+table(testDataCat$quality_Catnum, predictedClass_all)
+```
+
+
+# misclassification error
+```{r}
+mean(as.character(testDataCat$quality_Catnum) != as.character(predictedClass_all))
+```
+
+
+
+
+
+
+
+
+```{r}
+glance(fit.odr_log_alc)
+```
+
+```{r}
+glance(fit.odr_log_all)
+```
+
+```{r}
+glance(fit.odr_log_star)
+```
+
+```{r}
+glance(fit.odr_log_self)
+```
+
+
+
+
+
+#####################################################################################
+
+```{r}
+install.packages("drat", repos="https://cran.rstudio.com")
+drat:::addRepo("dmlc")
+install.packages("xgboost", repos="http://dmlc.ml/drat/", type = "source")
+```
+
+```{r}
+library(xgboost)
+```
+
+
+```{r}
+trainingData %>% count(quality)
+```
+
+
+```{r}
+set.seed(1)
+trainingData$quality <- as.numeric(trainingData$quality) 
+testData$quality <- as.numeric(testData$quality) 
+```
+
+```{r}
+trainingData$quality
+```
+
+
+
+```{r}
+trainm <- model.matrix(quality ~ 
+                         fixed.acidity + 
+                         volatile.acidity + 
+                         citric.acid + 
+                         residual.sugar + 
+                         chlorides + 
+                         free.sulfur.dioxide + 
+                         density + 
+                         pH + 
+                         sulphates + 
+                         alcohol
+                       , data = trainingData )
+
+train_label <- trainingData[, "quality"] 
+train_matrix <- xgb.DMatrix(data = trainm, label = train_label)
+```
+
+```{r}
+testm <- model.matrix(quality ~ 
+                         fixed.acidity + 
+                         volatile.acidity + 
+                         citric.acid + 
+                         residual.sugar + 
+                         chlorides + 
+                         free.sulfur.dioxide + 
+                         density + 
+                         pH + 
+                         sulphates + 
+                         alcohol
+                       , data = testData )
+
+test_label <- testData[, "quality"] 
+test_matrix <- xgb.DMatrix(data = testm, label = test_label)
+```
+
+
+```{r}
+nc <- length(unique(train_label))
+nc
+```
+# only works with 9
+
+set parameters
+  # over fit curve
+```{r}
+xgb_params <- list(
+  booster = "gbtree", 
+               objective = "multi:softprob", 
+               num_class = 9, # 3,4,5,6,7,8
+               eval_metric = "mlogloss")
+```
+https://discuss.analyticsvidhya.com/t/what-is-the-difference-between-softprob-and-softmax-in-xgboost/7063
+Basically both softmax and softprob are used for multiclass classification. It's the output which separates them. In Softmax you will get the class with the maximum probability as output, but with Softprob you will get a matrix with probability value of each class you are trying to predict.
+
+#line
+```{r}
+xgb_params <- list(
+
+  # General Parameters
+
+  booster            = "gbtree",      
+
+  silent             = 0,           
+
+  # Booster Parameters
+
+  eta                = 0.08,              
+
+  gamma              = 0.7,                 
+
+  max_depth          = 8,                
+
+  min_child_weight   = 2,            
+
+  subsample          = .9,                 
+
+  colsample_bytree   = .5,                
+
+  colsample_bylevel  = 1,          
+
+  lambda             = 1,    
+
+  alpha              = 0,       
+
+  # Task Parameters
+
+  objective          = "multi:softmax",   # default = "reg:linear"
+
+  eval_metric        = "merror",
+
+  num_class          = 9,
+
+  seed               = 1               # reproducability seed
+
+              , tree_method = "hist"
+
+              , grow_policy = "lossguide"
+
+)
+
+```
+
+```{r}
+watchlist <- list(train = train_matrix, test = test_matrix)
+```
+
+# Calculate # of folds for cross-validation
+```{r}
+bst_model <- xgb.train(params = xgb_params,
+                       data = train_matrix, 
+                       nrounds = 100, 
+                       watchlist = watchlist)
+```
+
+```{r}
+names(bst_model)
+```
+
+test and training error plot
+```{r}
+e <- data.frame(bst_model$evaluation_log)
+plot(e$iter, e$train_mlogloss, col = 'blue')
+#lines(e$iter, e$test_mlogloss, col = 'red')
+plot(e$iter, e$test_mlogloss, col = 'red')
+#points (24, e$test_mlogloss[24], col ="green",cex =2, pch =20)
+```
+
+```{r}
+e[e$test_mlogloss == min(e$test_mlogloss),]
+```
+
+
+#overfit happening because my test error starts going back up. 
+
+@ the 24th iteration, we have the lowest training and test error
+
+
+# need to calculate misclassification rate
+
+```{r}
+xgb_pred <- predict(bst_model, newdata = test_matrix)
+```
+
+```{r}
+length(xgb_pred)
+```
+
+```{r}
+predmatrix <- matrix(xgb_pred, nrow = 9, ncol = length(xgb_pred)/9) %>%
+  t() %>% 
+  data.frame() %>% 
+  mutate(label = test_label, max_prob = max.col(., "last"))
+```
+
+```{r}
+head(predmatrix)
+```
+
+
+```{r}
+table(Prediction = predmatrix$max_prob, Actual = predmatrix$label)
+```
+
+```{r}
+
+```
+
+
+
+Variable Importance
+https://rpubs.com/mharris/multiclass_xgboost
+
+```{r}
+importance_matrix = xgb.importance(feature_names = colnames(wineData[,-1]), model = bst_model)
+```
+
+```{r}
+# plot
+# install.packages("Ckmeans.1d.dp")
+xgb.ggplot.importance(importance_matrix[-1,]) # -1 to remove quality variable
+ 
+```
+# remove quality. 
+
+
+#So how does that contrast with what the regression model tells you about the different explanatory variables?
+# did the boosting model find any interactions or non-linearity. 
